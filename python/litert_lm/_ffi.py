@@ -43,6 +43,14 @@ class LiteRtLmSamplerParams(ctypes.Structure):
   ]
 
 
+class LiteRtLmSendOptions(ctypes.Structure):
+  _fields_ = [
+      # Maximum number of image patches for vision processing.
+      # Set to 0 to use the model default.
+      ("max_num_patches", ctypes.c_int),
+  ]
+
+
 class LiteRtLmInputData(ctypes.Structure):
   _fields_ = [
       ("type", ctypes.c_int),
@@ -285,6 +293,22 @@ def _setup_lib_signatures(lib):
       ctypes.c_void_p,
       c_string_p,
       c_string_p,
+      STREAM_CALLBACK_TYPE,
+      ctypes.c_void_p,
+  ]
+  lib.litert_lm_conversation_send_message_with_options.restype = ctypes.c_void_p
+  lib.litert_lm_conversation_send_message_with_options.argtypes = [
+      ctypes.c_void_p,
+      c_string_p,
+      c_string_p,
+      ctypes.POINTER(LiteRtLmSendOptions),
+  ]
+  lib.litert_lm_conversation_send_message_stream_with_options.restype = ctypes.c_int
+  lib.litert_lm_conversation_send_message_stream_with_options.argtypes = [
+      ctypes.c_void_p,
+      c_string_p,
+      c_string_p,
+      ctypes.POINTER(LiteRtLmSendOptions),
       STREAM_CALLBACK_TYPE,
       ctypes.c_void_p,
   ]

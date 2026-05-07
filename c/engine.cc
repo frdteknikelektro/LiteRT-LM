@@ -32,6 +32,7 @@
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 #include "runtime/conversation/conversation.h"
 #include "runtime/conversation/io_types.h"
+#include "runtime/conversation/model_data_processor/gemma4_data_processor_config.h"
 #include "runtime/engine/engine.h"
 #include "runtime/engine/engine_factory.h"
 #include "runtime/engine/engine_settings.h"
@@ -97,6 +98,15 @@ litert::lm::OptionalArgs CreateOptionalArgs(const char* extra_context) {
     }
   }
   return optional_args;
+}
+
+// Non-Gemma4 processors ignore unknown DataProcessorArguments variants.
+void ApplySendOptions(litert::lm::OptionalArgs& optional_args,
+                      const LiteRtLmSendOptions* options) {
+  if (options && options->max_num_patches > 0) {
+    optional_args.args = litert::lm::Gemma4DataProcessorArguments{
+        .max_num_patches = options->max_num_patches};
+  }
 }
 
 std::vector<litert::lm::InputData> ToEngineInputData(
@@ -995,6 +1005,63 @@ int litert_lm_conversation_send_message_stream(
   }
 
   litert::lm::OptionalArgs optional_args = CreateOptionalArgs(extra_context);
+
+  absl::Status status = conversation->conversation->SendMessageAsync(
+      json_message, CreateConversationCallback(callback, callback_data),
+      std::move(optional_args));
+
+  if (!status.ok()) {
+    ABSL_LOG(ERROR) << "Failed to start message stream: " << status;
+    return static_cast<int>(status.code());
+  }
+  return 0;
+}
+
+LiteRtLmJsonResponse* litert_lm_conversation_send_message_with_options(
+    LiteRtLmConversation* conversation, const char* message_json,
+    const char* extra_context, const LiteRtLmSendOptions* options) {
+  if (!conversation || !conversation->conversation) {
+    return nullptr;
+  }
+  nlohmann::json json_message =
+      nlohmann::json::parse(message_json, /*cb=*/nullptr,
+                            /*allow_exceptions=*/false);
+  if (json_message.is_discarded()) {
+    ABSL_LOG(ERROR) << "Failed to parse message JSON.";
+    return nullptr;
+  }
+
+  litert::lm::OptionalArgs optional_args = CreateOptionalArgs(extra_context);
+  ApplySendOptions(optional_args, options);
+
+  auto response = conversation->conversation->SendMessage(
+      json_message, std::move(optional_args));
+  if (!response.ok()) {
+    ABSL_LOG(ERROR) << "Failed to send message: " << response.status();
+    return nullptr;
+  }
+  auto* c_response = new LiteRtLmJsonResponse;
+  c_response->json_string = response->dump();
+  return c_response;
+}
+
+int litert_lm_conversation_send_message_stream_with_options(
+    LiteRtLmConversation* conversation, const char* message_json,
+    const char* extra_context, const LiteRtLmSendOptions* options,
+    LiteRtLmStreamCallback callback, void* callback_data) {
+  if (!conversation || !conversation->conversation) {
+    return -1;
+  }
+  nlohmann::json json_message =
+      nlohmann::json::parse(message_json, /*cb=*/nullptr,
+                            /*allow_exceptions=*/false);
+  if (json_message.is_discarded()) {
+    ABSL_LOG(ERROR) << "Failed to parse message JSON.";
+    return -1;
+  }
+
+  litert::lm::OptionalArgs optional_args = CreateOptionalArgs(extra_context);
+  ApplySendOptions(optional_args, options);
 
   absl::Status status = conversation->conversation->SendMessageAsync(
       json_message, CreateConversationCallback(callback, callback_data),

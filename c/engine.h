@@ -111,6 +111,13 @@ typedef struct {
   int32_t seed;
 } LiteRtLmSamplerParams;
 
+// Options for a single send_message call.
+typedef struct {
+  // Maximum number of image patches for vision processing.
+  // Set to 0 to use the model default.
+  int32_t max_num_patches;
+} LiteRtLmSendOptions;
+
 // Creates a LiteRT LM Session Config.
 // The caller is responsible for destroying the config using
 // `litert_lm_session_config_delete`.
@@ -693,6 +700,21 @@ LiteRtLmJsonResponse* litert_lm_conversation_send_message(
     LiteRtLmConversation* conversation, const char* message_json,
     const char* extra_context);
 
+// Sends a message to the conversation with per-turn options and returns the
+// response. This is a blocking call.
+//
+// @param conversation The conversation to use.
+// @param message_json A JSON string representing the message to send.
+// @param extra_context A JSON string representing the extra context to use.
+// @param options Per-turn send options, or NULL to use defaults.
+// @return A pointer to the JSON response, or NULL on failure. The caller is
+//   responsible for deleting the response using
+//   `litert_lm_json_response_delete`.
+LITERT_LM_C_API_EXPORT
+LiteRtLmJsonResponse* litert_lm_conversation_send_message_with_options(
+    LiteRtLmConversation* conversation, const char* message_json,
+    const char* extra_context, const LiteRtLmSendOptions* options);
+
 // Destroys a LiteRT LM Json Response object.
 //
 // @param response The response to destroy.
@@ -725,6 +747,23 @@ int litert_lm_conversation_send_message_stream(
     LiteRtLmConversation* conversation, const char* message_json,
     const char* extra_context, LiteRtLmStreamCallback callback,
     void* callback_data);
+
+// Sends a message to the conversation with per-turn options and streams the
+// response via a callback. This is a non-blocking call.
+//
+// @param conversation The conversation to use.
+// @param message_json A JSON string representing the message to send.
+// @param extra_context A JSON string representing the extra context to use.
+// @param options Per-turn send options, or NULL to use defaults.
+// @param callback The callback function to receive response chunks.
+// @param callback_data A pointer to user data that will be passed to the
+// callback.
+// @return 0 on success, non-zero on failure to start the stream.
+LITERT_LM_C_API_EXPORT
+int litert_lm_conversation_send_message_stream_with_options(
+    LiteRtLmConversation* conversation, const char* message_json,
+    const char* extra_context, const LiteRtLmSendOptions* options,
+    LiteRtLmStreamCallback callback, void* callback_data);
 
 // Renders the message into a string according to the template.
 //

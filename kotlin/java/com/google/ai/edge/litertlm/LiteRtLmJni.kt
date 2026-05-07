@@ -247,6 +247,39 @@ internal object LiteRtLmJni {
   ): String
 
   /**
+   * Send message from the given input data synchronously, with per-turn options.
+   *
+   * @param conversationPointer A pointer to the native conversation instance.
+   * @param messageJsonString The message to be processed by the native conversation instance.
+   * @param extraContextJsonString The extra context in JSON string format.
+   * @param maxNumPatches Maximum number of image patches for vision processing. 0 = model default.
+   * @return The response message in JSON string format.
+   */
+  external fun nativeSendMessageWithOptions(
+    conversationPointer: Long,
+    messageJsonString: String,
+    extraContextJsonString: String,
+    maxNumPatches: Int,
+  ): String
+
+  /**
+   * Send message from the given input data asynchronously, with per-turn options.
+   *
+   * @param conversationPointer A pointer to the native conversation instance.
+   * @param messageJsonString The message to be processed by the native conversation instance.
+   * @param extraContextJsonString The extra context in JSON string format.
+   * @param maxNumPatches Maximum number of image patches for vision processing. 0 = model default.
+   * @param callback The callback to receive the streaming responses.
+   */
+  external fun nativeSendMessageAsyncWithOptions(
+    conversationPointer: Long,
+    messageJsonString: String,
+    extraContextJsonString: String,
+    maxNumPatches: Int,
+    callback: JniMessageCallback,
+  )
+
+  /**
    * Cancels the ongoing conversation process.
    *
    * @param conversationPointer A pointer to the native conversation instance.

@@ -318,13 +318,19 @@ class AbstractConversation(abc.ABC):
 
   @abc.abstractmethod
   def send_message(
-      self, message: str | collections.abc.Mapping[str, Any]
+      self,
+      message: str | collections.abc.Mapping[str, Any],
+      *,
+      max_num_patches: int | None = None,
   ) -> collections.abc.Mapping[str, Any]:
     """Sends a message and returns the response.
 
     Args:
         message: The input message to send to the model. Example: "Hello" or
           {"role": "user", "content": "Hello"}.
+        max_num_patches: Maximum number of image patches for vision processing.
+          Controls the token budget tradeoff between inference speed and image
+          accuracy. None uses the model default.
 
     Returns:
         A dictionary containing the model's response. The structure is:
@@ -333,13 +339,19 @@ class AbstractConversation(abc.ABC):
 
   @abc.abstractmethod
   def send_message_async(
-      self, message: str | collections.abc.Mapping[str, Any]
+      self,
+      message: str | collections.abc.Mapping[str, Any],
+      *,
+      max_num_patches: int | None = None,
   ) -> collections.abc.Iterator[collections.abc.Mapping[str, Any]]:
     """Sends a message and streams the response.
 
     Args:
         message: The input message to send to the model. Example: "Hello" or
           {"role": "user", "content": "Hello"}.
+        max_num_patches: Maximum number of image patches for vision processing.
+          Controls the token budget tradeoff between inference speed and image
+          accuracy. None uses the model default.
 
     Returns:
         An iterator yielding dictionaries containing chunks of the model's

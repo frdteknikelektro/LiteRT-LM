@@ -34,6 +34,7 @@
 #include "runtime/components/prompt_template.h"
 #include "runtime/conversation/conversation.h"
 #include "runtime/conversation/io_types.h"
+#include "runtime/conversation/model_data_processor/gemma4_data_processor_config.h"
 #include "runtime/engine/engine.h"
 #include "runtime/engine/engine_factory.h"
 #include "runtime/engine/engine_settings.h"
@@ -925,24 +926,22 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeDeleteConversation)(
   delete reinterpret_cast<Conversation*>(conversation_pointer);
 }
 
-LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
-    JNIEnv* env, jclass thiz, jlong conversation_pointer,
-    jstring messageJSONString, jstring extraContextJsonString,
-    jobject callback) {
+static void SendMessageAsyncImpl(JNIEnv* env, Conversation* conversation,
+                                  jstring messageJSONString,
+                                  jstring extraContextJsonString,
+                                  litert::lm::OptionalArgs optional_args,
+                                  jobject callback,
+                                  const std::string& caller_name) {
   JavaVM* jvm = nullptr;
   if (env->GetJavaVM(&jvm) != JNI_OK) {
     ThrowLiteRtLmJniException(env, "Failed to get JavaVM");
     return;
   }
 
-  Conversation* conversation =
-      reinterpret_cast<Conversation*>(conversation_pointer);
-
   const char* json_chars = env->GetStringUTFChars(messageJSONString, nullptr);
   litert::lm::Message json_message = nlohmann::ordered_json::parse(json_chars);
   env->ReleaseStringUTFChars(messageJSONString, json_chars);
 
-  litert::lm::OptionalArgs optional_args;
   nlohmann::ordered_json extra_context =
       GetExtraContextJson(env, extraContextJsonString);
   if (!extra_context.is_null() && !extra_context.empty()) {
@@ -980,7 +979,6 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
         JNIEnv* env = GetJniEnvAndAttach(jvm, &attached);
         if (!env) return;
 
-        // This lambda is to clean up the global reference.
         auto on_done_fn = [jvm, callback_global, terminal_reached]() {
           if (*terminal_reached) return;
           *terminal_reached = true;
@@ -1025,8 +1023,19 @@ LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
 
   if (!status.ok()) {
     ThrowLiteRtLmJniException(
-        env, "Failed to start nativeSendMessageAsync: " + status.ToString());
+        env, "Failed to start " + caller_name + ": " + status.ToString());
   }
+}
+
+LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsync)(
+    JNIEnv* env, jclass thiz, jlong conversation_pointer,
+    jstring messageJSONString, jstring extraContextJsonString,
+    jobject callback) {
+  Conversation* conversation =
+      reinterpret_cast<Conversation*>(conversation_pointer);
+  SendMessageAsyncImpl(env, conversation, messageJSONString,
+                       extraContextJsonString, litert::lm::OptionalArgs{},
+                       callback, "nativeSendMessageAsync");
 }
 
 LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeSendMessage)(
@@ -1055,6 +1064,56 @@ LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeSendMessage)(
   }
 
   return NewStringStandardUTF(env, response->dump());
+}
+
+LITERTLM_JNIEXPORT jstring JNICALL JNI_METHOD(nativeSendMessageWithOptions)(
+    JNIEnv* env, jclass thiz, jlong conversation_pointer,
+    jstring messageJSONString, jstring extraContextJsonString,
+    jint maxNumPatches) {
+  Conversation* conversation =
+      reinterpret_cast<Conversation*>(conversation_pointer);
+
+  const char* json_chars = env->GetStringUTFChars(messageJSONString, nullptr);
+  litert::lm::Message json_message = nlohmann::ordered_json::parse(json_chars);
+  env->ReleaseStringUTFChars(messageJSONString, json_chars);
+
+  litert::lm::OptionalArgs optional_args;
+  nlohmann::ordered_json extra_context =
+      GetExtraContextJson(env, extraContextJsonString);
+  if (!extra_context.is_null() && !extra_context.empty()) {
+    optional_args.extra_context = extra_context;
+  }
+  if (maxNumPatches > 0) {
+    optional_args.args = litert::lm::Gemma4DataProcessorArguments{
+        .max_num_patches = static_cast<int>(maxNumPatches)};
+  }
+
+  auto response =
+      conversation->SendMessage(json_message, std::move(optional_args));
+  if (!response.ok()) {
+    ThrowLiteRtLmJniException(
+        env, "Failed to call nativeSendMessageWithOptions: " +
+                 response.status().ToString());
+    return nullptr;
+  }
+
+  return NewStringStandardUTF(env, response->dump());
+}
+
+LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeSendMessageAsyncWithOptions)(
+    JNIEnv* env, jclass thiz, jlong conversation_pointer,
+    jstring messageJSONString, jstring extraContextJsonString,
+    jint maxNumPatches, jobject callback) {
+  Conversation* conversation =
+      reinterpret_cast<Conversation*>(conversation_pointer);
+  litert::lm::OptionalArgs optional_args;
+  if (maxNumPatches > 0) {
+    optional_args.args = litert::lm::Gemma4DataProcessorArguments{
+        .max_num_patches = static_cast<int>(maxNumPatches)};
+  }
+  SendMessageAsyncImpl(env, conversation, messageJSONString,
+                       extraContextJsonString, std::move(optional_args),
+                       callback, "nativeSendMessageAsyncWithOptions");
 }
 
 LITERTLM_JNIEXPORT void JNICALL JNI_METHOD(nativeConversationCancelProcess)(

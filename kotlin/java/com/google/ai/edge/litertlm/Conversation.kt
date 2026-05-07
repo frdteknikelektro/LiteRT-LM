@@ -92,7 +92,11 @@ class Conversation(
    *   invalid response, or if the tool call limit is exceeded.
    * @throws LiteRtLmJniException if an error occurs during the native call.
    */
-  fun sendMessage(message: Message, extraContext: Map<String, Any> = emptyMap()): Message {
+  fun sendMessage(
+    message: Message,
+    extraContext: Map<String, Any> = emptyMap(),
+    options: SendOptions = SendOptions(),
+  ): Message {
     checkIsAlive()
 
     var currentMessageJson = message.toJson()
@@ -100,7 +104,12 @@ class Conversation(
 
     for (i in 0..<RECURRING_TOOL_CALL_LIMIT) {
       val responseJsonString =
-        LiteRtLmJni.nativeSendMessage(handle, currentMessageJson.toString(), extraContextJsonString)
+        if (options.maxNumPatches != null) {
+          LiteRtLmJni.nativeSendMessageWithOptions(
+            handle, currentMessageJson.toString(), extraContextJsonString, options.maxNumPatches)
+        } else {
+          LiteRtLmJni.nativeSendMessage(handle, currentMessageJson.toString(), extraContextJsonString)
+        }
       val responseJsonObject = JsonParser.parseString(responseJsonString).asJsonObject
 
       if (responseJsonObject.has("tool_calls")) {
@@ -133,8 +142,12 @@ class Conversation(
    *   invalid response, or if the tool call limit is exceeded.
    * @throws LiteRtLmJniException if an error occurs during the native call.
    */
-  fun sendMessage(contents: Contents, extraContext: Map<String, Any> = emptyMap()): Message {
-    return sendMessage(Message.user(contents), extraContext)
+  fun sendMessage(
+    contents: Contents,
+    extraContext: Map<String, Any> = emptyMap(),
+    options: SendOptions = SendOptions(),
+  ): Message {
+    return sendMessage(Message.user(contents), extraContext, options)
   }
 
   /**
@@ -152,8 +165,12 @@ class Conversation(
    *   invalid response, or if the tool call limit is exceeded.
    * @throws LiteRtLmJniException if an error occurs during the native call.
    */
-  fun sendMessage(text: String, extraContext: Map<String, Any> = emptyMap()): Message =
-    sendMessage(Contents.of(text), extraContext)
+  fun sendMessage(
+    text: String,
+    extraContext: Map<String, Any> = emptyMap(),
+    options: SendOptions = SendOptions(),
+  ): Message =
+    sendMessage(Contents.of(text), extraContext, options)
 
   /**
    * Send a message to the model and returns the response async with a callback.
@@ -173,18 +190,29 @@ class Conversation(
     message: Message,
     callback: MessageCallback,
     extraContext: Map<String, Any> = emptyMap(),
+    options: SendOptions = SendOptions(),
   ) {
     checkIsAlive()
 
     val extraContextJsonString = extraContext.toJsonObject().toString()
 
     val jniCallback = JniMessageCallbackImpl(callback)
-    LiteRtLmJni.nativeSendMessageAsync(
-      handle,
-      message.toJson().toString(),
-      extraContextJsonString,
-      jniCallback,
-    )
+    if (options.maxNumPatches != null) {
+      LiteRtLmJni.nativeSendMessageAsyncWithOptions(
+        handle,
+        message.toJson().toString(),
+        extraContextJsonString,
+        options.maxNumPatches,
+        jniCallback,
+      )
+    } else {
+      LiteRtLmJni.nativeSendMessageAsync(
+        handle,
+        message.toJson().toString(),
+        extraContextJsonString,
+        jniCallback,
+      )
+    }
   }
 
   /**
@@ -205,7 +233,8 @@ class Conversation(
     contents: Contents,
     callback: MessageCallback,
     extraContext: Map<String, Any> = emptyMap(),
-  ) = sendMessageAsync(Message.user(contents), callback, extraContext)
+    options: SendOptions = SendOptions(),
+  ) = sendMessageAsync(Message.user(contents), callback, extraContext, options)
 
   /**
    * Send a text to the model and returns the response async with a callback.
@@ -225,7 +254,8 @@ class Conversation(
     text: String,
     callback: MessageCallback,
     extraContext: Map<String, Any> = emptyMap(),
-  ) = sendMessageAsync(Contents.of(text), callback, extraContext)
+    options: SendOptions = SendOptions(),
+  ) = sendMessageAsync(Contents.of(text), callback, extraContext, options)
 
   /**
    * Sends a message to the model and returns the response async as a [Flow].
@@ -244,6 +274,7 @@ class Conversation(
   fun sendMessageAsync(
     message: Message,
     extraContext: Map<String, Any> = emptyMap(),
+    options: SendOptions = SendOptions(),
   ): Flow<Message> = callbackFlow {
     sendMessageAsync(
       message,
@@ -261,6 +292,7 @@ class Conversation(
         }
       },
       extraContext,
+      options,
     )
     awaitClose {}
   }
@@ -282,7 +314,8 @@ class Conversation(
   fun sendMessageAsync(
     contents: Contents,
     extraContext: Map<String, Any> = emptyMap(),
-  ): Flow<Message> = sendMessageAsync(Message.user(contents), extraContext)
+    options: SendOptions = SendOptions(),
+  ): Flow<Message> = sendMessageAsync(Message.user(contents), extraContext, options)
 
   /**
    * Sends a text to the model and returns the response async as a [Flow].
@@ -298,8 +331,12 @@ class Conversation(
    * @throws IllegalStateException if the conversation has already been closed or the content is
    *   empty.
    */
-  fun sendMessageAsync(text: String, extraContext: Map<String, Any> = emptyMap()): Flow<Message> =
-    sendMessageAsync(Contents.of(text), extraContext)
+  fun sendMessageAsync(
+    text: String,
+    extraContext: Map<String, Any> = emptyMap(),
+    options: SendOptions = SendOptions(),
+  ): Flow<Message> =
+    sendMessageAsync(Contents.of(text), extraContext, options)
 
   private fun handleToolCalls(toolCallsJsonObject: JsonObject): JsonObject {
     val toolCallsJSONArray = toolCallsJsonObject.getAsJsonArray("tool_calls")

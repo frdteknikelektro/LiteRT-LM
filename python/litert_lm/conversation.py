@@ -14,12 +14,14 @@
 """Conversation wrapper for LiteRT-LM."""
 
 import collections.abc
+import ctypes
 import json
 import logging
 import queue
 from typing import Any
 
 from . import interfaces
+from ._ffi import LiteRtLmSendOptions
 from ._ffi import STREAM_CALLBACK_TYPE
 
 
@@ -113,7 +115,10 @@ class Conversation(interfaces.AbstractConversation):
     return tool_responses
 
   def send_message(
-      self, message: str | collections.abc.Mapping[str, Any]
+      self,
+      message: str | collections.abc.Mapping[str, Any],
+      *,
+      max_num_patches: int | None = None,
   ) -> collections.abc.Mapping[str, Any]:
     current_message = (
         message
@@ -125,9 +130,15 @@ class Conversation(interfaces.AbstractConversation):
       msg_json = json.dumps(current_message)
       ctx_json = json.dumps(getattr(self, "extra_context", {}))
 
-      resp_ptr = self._lib.litert_lm_conversation_send_message(
-          self._ptr, msg_json, ctx_json
-      )
+      if max_num_patches is not None:
+        options = LiteRtLmSendOptions(max_num_patches=max_num_patches)
+        resp_ptr = self._lib.litert_lm_conversation_send_message_with_options(
+            self._ptr, msg_json, ctx_json, ctypes.byref(options)
+        )
+      else:
+        resp_ptr = self._lib.litert_lm_conversation_send_message(
+            self._ptr, msg_json, ctx_json
+        )
       if not resp_ptr:
         raise RuntimeError("litert_lm_conversation_send_message failed")
 
@@ -147,7 +158,10 @@ class Conversation(interfaces.AbstractConversation):
       current_message = tool_responses
 
   def send_message_async(
-      self, message: str | collections.abc.Mapping[str, Any]
+      self,
+      message: str | collections.abc.Mapping[str, Any],
+      *,
+      max_num_patches: int | None = None,
   ) -> collections.abc.Iterator[collections.abc.Mapping[str, Any]]:
     current_message = (
         message
@@ -169,13 +183,25 @@ class Conversation(interfaces.AbstractConversation):
 
       c_callback = STREAM_CALLBACK_TYPE(callback)
       self._current_callback = c_callback
-      res = self._lib.litert_lm_conversation_send_message_stream(
-          self._ptr,
-          msg_json,
-          ctx_json,
-          c_callback,
-          None,
-      )
+
+      if max_num_patches is not None:
+        options = LiteRtLmSendOptions(max_num_patches=max_num_patches)
+        res = self._lib.litert_lm_conversation_send_message_stream_with_options(
+            self._ptr,
+            msg_json,
+            ctx_json,
+            ctypes.byref(options),
+            c_callback,
+            None,
+        )
+      else:
+        res = self._lib.litert_lm_conversation_send_message_stream(
+            self._ptr,
+            msg_json,
+            ctx_json,
+            c_callback,
+            None,
+        )
       if res != 0:
         raise RuntimeError("litert_lm_conversation_send_message_stream failed")
 
